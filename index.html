@@ -1,0 +1,1346 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Vòng Quay May Mắn</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        html, body {
+            width: 100vw;
+            height: 100vh;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #061426;
+        }
+        #bgCanvas, #wheelCanvas {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+        #bgCanvas {
+            z-index: 1;
+            pointer-events: none;
+        }
+        #wheelCanvas {
+            z-index: 2;
+            cursor: pointer;
+        }
+        /* Hai lớp canvas pháo giấy chữ nhật: một lớp dưới hộp thoại, một lớp bay ngang phía trước hộp thoại giống ảnh mẫu */
+        #confettiBackCanvas {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 32;
+            pointer-events: none;
+        }
+        #confettiFrontCanvas {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 42;
+            pointer-events: none;
+        }
+        /* Nút (i) siêu nhỏ góc trên bên trái giống ảnh mẫu */
+        #secretInfoTrigger {
+            position: fixed;
+            top: 12px;
+            left: 12px;
+            z-index: 45;
+            width: 22px;
+            height: 22px;
+            border-radius: 9999px;
+            border: 1.5px solid rgba(15, 23, 42, 0.55);
+            background: rgba(255, 255, 255, 0.14);
+            color: rgba(15, 23, 42, 0.78);
+            font-size: 12px;
+            font-weight: 700;
+            font-style: italic;
+            font-family: Georgia, serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: opacity 0.2s ease;
+            opacity: 0.72;
+        }
+        #secretInfoTrigger:hover {
+            opacity: 0.95;
+        }
+        @keyframes modalFadeIn {
+            0% { opacity: 0; transform: scale(0.95) translateY(-6px); }
+            100% { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .animate-winner-box {
+            animation: modalFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+        .admin-scroll::-webkit-scrollbar {
+            width: 5px;
+        }
+        .admin-scroll::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.4);
+        }
+        .admin-scroll::-webkit-scrollbar-thumb {
+            background: rgba(148, 163, 184, 0.35);
+            border-radius: 9999px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Canvas 1: Nền tia Sunburst 14 màu + Mạng lưới chòm sao chuyển động -->
+    <canvas id="bgCanvas"></canvas>
+
+    <!-- Canvas 2: Chân đế chữ T, Viền đèn LED, 90 ô số (10-99), Nút Quay & Kim chỉ 12h -->
+    <canvas id="wheelCanvas"></canvas>
+
+    <!-- Biểu tượng (i) góc trên bên trái (Nhấn 3 lần để mở Admin) -->
+    <button id="secretInfoTrigger" type="button" aria-label="Thông tin">i</button>
+
+    <!-- Lớp phủ tối bán trong suốt (rgba(0, 0, 0, 0.45)) -->
+    <div id="winnerBackdrop" class="fixed inset-0 z-30 hidden" style="background-color: rgba(0, 0, 0, 0.45);"></div>
+
+    <!-- Canvas pháo giấy lớp sau (nằm trên lớp phủ tối, dưới hộp thoại) -->
+    <canvas id="confettiBackCanvas"></canvas>
+
+    <!-- ==================== HỘP THOẠI THÔNG BÁO TRÚNG SỐ (GIỐNG HỆT ẢNH MẪU) ==================== -->
+    <div id="winnerModal" class="fixed inset-0 z-40 hidden items-center justify-center p-4">
+        <div class="bg-white w-full max-w-[540px] rounded-[4px] shadow-[0_10px_30px_rgba(0,0,0,0.28)] border border-[#e5e7eb] animate-winner-box overflow-hidden">
+            
+            <!-- Phần đầu (Header) -->
+            <div class="px-5 py-3.5 border-b border-[#e5e7eb] flex items-center justify-between">
+                <div class="flex items-center gap-2 text-[#374151] text-[15px] font-normal">
+                    <!-- Biểu tượng ô vuông bo góc viền xám nhạt giống ảnh mẫu -->
+                    <svg class="w-[15px] h-[16px] text-[#4b5563] shrink-0" viewBox="0 0 16 18" fill="none" stroke="currentColor" stroke-width="1.4">
+                        <rect x="2" y="2.5" width="12" height="13.5" rx="2.5" />
+                        <path d="M5.5 2.5V1.8C5.5 1.35817 5.85817 1 6.3 1H9.7C10.1418 1 10.5 1.35817 10.5 1.8V2.5" />
+                    </svg>
+                    <span id="winnerModalHeaderText">Bạn đã quay vào ô</span>
+                </div>
+                <button id="btnCloseWinnerX" type="button" aria-label="Đóng" class="text-[#9ca3af] hover:text-[#4b5563] transition-colors p-1 -mr-1 leading-none">
+                    <svg class="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6">
+                        <path stroke-linecap="round" d="M3 3L13 13M13 3L3 13" />
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Phần thân (Body) -->
+            <div class="px-6 py-11 flex flex-col items-center justify-center text-center">
+                <!-- Vòng tròn viền đỏ san hô (#d9534f, nét mảnh 2px, đường kính ~52px) + dấu tích (✓) -->
+                <div class="w-[52px] h-[52px] rounded-full border-[2px] border-[#d9534f] flex items-center justify-center mb-5">
+                    <svg class="w-6 h-6 text-[#d9534f]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                </div>
+                <!-- Con số vừa trúng cỡ lớn (36px), nét thanh mảnh (font-weight: 400), màu đỏ san hô (#d9534f) -->
+                <div id="winnerNumberText" class="text-[36px] font-normal leading-tight text-[#d9534f] tracking-normal">
+                    46
+                </div>
+            </div>
+
+            <!-- Phần chân (Footer) -->
+            <div class="px-5 py-3.5 border-t border-[#e5e7eb] flex items-center justify-center gap-[8px]">
+                <button id="btnDeleteSlice" type="button"
+                    class="bg-[#dc3545] hover:bg-[#c82333] text-white text-[13.5px] font-normal rounded-[4px] px-[16px] py-[8px] transition-colors cursor-pointer">
+                    Xóa ô này
+                </button>
+                <button id="btnCloseWinner" type="button"
+                    class="bg-[#6c757d] hover:bg-[#5a6268] text-white text-[13.5px] font-normal rounded-[4px] px-[16px] py-[8px] transition-colors cursor-pointer">
+                    Đóng lại
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Canvas pháo giấy lớp trước (một vài mảnh bay ngang phía trước hộp thoại giống ảnh mẫu) -->
+    <canvas id="confettiFrontCanvas"></canvas>
+
+    <!-- ==================== BẢNG ĐIỀU KHIỂN ADMIN ẨN (HOÀN TOÀN BÍ MẬT) ==================== -->
+    <div id="adminModal" class="fixed inset-0 z-50 hidden items-center justify-center p-3 sm:p-5 bg-slate-950/80 backdrop-blur-md">
+        <div class="bg-slate-900 text-slate-100 border border-slate-700/80 rounded-2xl max-w-2xl w-full max-h-[92vh] flex flex-col shadow-2xl animate-winner-box overflow-hidden">
+            <!-- Header Admin -->
+            <div class="px-5 py-4 bg-slate-950/90 border-b border-slate-800 flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <h3 class="font-bold text-base sm:text-lg tracking-tight text-white">
+                        Bảng Điều Khiển Admin (Ẩn)
+                    </h3>
+                    <span id="adminStatusBadge" class="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                        Chế độ: Ngẫu nhiên hoàn toàn
+                    </span>
+                </div>
+                <button id="btnCloseAdmin" type="button" class="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Body Admin -->
+            <div class="p-5 overflow-y-auto admin-scroll space-y-5 text-sm">
+
+                <!-- 1. ĐIỀU KHIỂN KẾT QUẢ (GÀI KẾT QUẢ) -->
+                <div class="p-4 rounded-xl bg-slate-800/60 border border-slate-700/70 space-y-4">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                            <h4 class="font-bold text-amber-400 text-sm uppercase tracking-wide">1. Chế độ quay & Chỉ định kết quả</h4>
+                            <p class="text-xs text-slate-400">Vòng quay sẽ giảm tốc tự nhiên và dừng chính xác tuyệt đối tại số chỉ định</p>
+                        </div>
+                        <div class="inline-flex rounded-xl bg-slate-950 p-1 border border-slate-800">
+                            <button id="modeRandomBtn" type="button" class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all">
+                                Ngẫu nhiên hoàn toàn
+                            </button>
+                            <button id="modePresetBtn" type="button" class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all">
+                                Chỉ định số trúng
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="presetControlsBox" class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-700/60">
+                        <!-- Số trúng tiếp theo -->
+                        <div>
+                            <label for="inputNextWinner" class="block text-xs font-semibold text-slate-300 mb-1.5">
+                                Số trúng lượt kế tiếp (1 số)
+                            </label>
+                            <div class="flex gap-2">
+                                <input id="inputNextWinner" type="number" min="0" max="999" placeholder="VD: 46"
+                                    class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-bold focus:border-amber-400 outline-none">
+                                <button id="btnClearNextWinner" type="button" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-slate-300">
+                                    Xóa
+                                </button>
+                            </div>
+                            <p class="text-[11px] text-slate-400 mt-1">Tự xóa sau khi quay xong lượt kế tiếp.</p>
+                        </div>
+
+                        <!-- Hàng đợi nhiều lượt quay -->
+                        <div>
+                            <label for="inputWinnerQueue" class="block text-xs font-semibold text-slate-300 mb-1.5">
+                                Hàng đợi nhiều lượt (VD: 46, 68, 88)
+                            </label>
+                            <input id="inputWinnerQueue" type="text" placeholder="VD: 46, 68, 88"
+                                class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-medium focus:border-amber-400 outline-none">
+                            <div class="flex items-center justify-between mt-1.5">
+                                <label class="inline-flex items-center gap-1.5 text-[11px] text-slate-400 cursor-pointer">
+                                    <input id="chkLoopQueue" type="checkbox" class="accent-amber-400 rounded">
+                                    <span>Lặp lại hàng đợi khi hết</span>
+                                </label>
+                                <span id="queueCountLabel" class="text-[11px] text-amber-400 font-semibold">0 số trong hàng đợi</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. CẤU HÌNH DẢI SỐ & HIỆU ỨNG -->
+                <div class="p-4 rounded-xl bg-slate-800/60 border border-slate-700/70 space-y-4">
+                    <h4 class="font-bold text-sky-400 text-sm uppercase tracking-wide">2. Cấu hình dải số & Hiệu ứng</h4>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                            <label for="inputStartNum" class="block text-xs font-medium text-slate-300 mb-1">Số bắt đầu</label>
+                            <input id="inputStartNum" type="number" value="10" min="0" max="998"
+                                class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-semibold focus:border-sky-400 outline-none">
+                        </div>
+                        <div>
+                            <label for="inputEndNum" class="block text-xs font-medium text-slate-300 mb-1">Số kết thúc</label>
+                            <input id="inputEndNum" type="number" value="99" min="1" max="999"
+                                class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-semibold focus:border-sky-400 outline-none">
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-xs mb-1">
+                                <span class="text-slate-300 font-medium">Thời gian quay</span>
+                                <span id="lblDuration" class="text-sky-400 font-bold">6 giây</span>
+                            </div>
+                            <input id="rangeDuration" type="range" min="2" max="15" value="6"
+                                class="w-full h-2 mt-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-400">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                        <label class="flex items-center gap-2 p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+                            <input id="chkExcludeWon" type="checkbox" class="w-4 h-4 accent-sky-400 rounded">
+                            <span class="text-xs text-slate-200">Tự động xóa số đã trúng</span>
+                        </label>
+                        <label class="flex items-center gap-2 p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+                            <input id="chkSound" type="checkbox" checked class="w-4 h-4 accent-sky-400 rounded">
+                            <span class="text-xs text-slate-200">Bật âm thanh</span>
+                        </label>
+                        <label class="flex items-center gap-2 p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+                            <input id="chkConfetti" type="checkbox" checked class="w-4 h-4 accent-sky-400 rounded">
+                            <span class="text-xs text-slate-200">Bật pháo giấy</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- 3. LỊCH SỬ QUAY & KHÔI PHỤC -->
+                <div class="p-4 rounded-xl bg-slate-800/60 border border-slate-700/70 space-y-3">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <h4 class="font-bold text-emerald-400 text-sm uppercase tracking-wide">
+                            3. Lịch sử đã quay (<span id="historyCount">0</span>)
+                        </h4>
+                        <div class="flex gap-2">
+                            <button id="btnRestoreExcluded" type="button" class="px-2.5 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-xs text-slate-200">
+                                Khôi phục số đã xóa (<span id="excludedCount">0</span>)
+                            </button>
+                            <button id="btnResetAll" type="button" class="px-2.5 py-1 rounded-lg bg-rose-950 hover:bg-rose-900 text-rose-300 border border-rose-800/60 text-xs font-semibold">
+                                Đặt lại tất cả
+                            </button>
+                        </div>
+                    </div>
+                    <div id="adminHistoryList" class="max-h-32 overflow-y-auto admin-scroll flex flex-wrap gap-1.5 p-2 rounded-xl bg-slate-950/70 border border-slate-800 min-h-[48px]">
+                        <span class="text-xs text-slate-500 italic">Chưa có lượt quay nào...</span>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Footer Admin -->
+            <div class="px-5 py-3.5 bg-slate-950/90 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+                <span>Mở nhanh: <kbd class="px-1.5 py-0.5 bg-slate-800 border border-slate-700 rounded text-slate-200">Alt + A</kbd> hoặc bấm <kbd class="px-1.5 py-0.5 bg-slate-800 border border-slate-700 rounded text-slate-200">9</kbd> 3 lần</span>
+                <button id="btnSaveAndCloseAdmin" type="button" class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm transition-all active:scale-95">
+                    Lưu & Đóng
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * BỘ TỔNG HỢP ÂM THANH WEB AUDIO API (TIẾNG TẠCH QUA VẠCH & NHẠC CHÚC MỪNG)
+         */
+        class SoundFX {
+            constructor() {
+                this.ctx = null;
+            }
+            unlock() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioCtx();
+                }
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+            playTick() {
+                try {
+                    this.unlock();
+                    const t = this.ctx.currentTime;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(860, t);
+                    osc.frequency.exponentialRampToValueAtTime(190, t + 0.036);
+                    gain.gain.setValueAtTime(0.24, t);
+                    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.036);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(t);
+                    osc.stop(t + 0.04);
+                } catch (e) {}
+            }
+            playWin() {
+                try {
+                    this.unlock();
+                    const t = this.ctx.currentTime;
+                    const notes = [
+                        { f: 523.25, d: 0.00, l: 0.16 },
+                        { f: 659.25, d: 0.11, l: 0.16 },
+                        { f: 783.99, d: 0.22, l: 0.18 },
+                        { f: 1046.50, d: 0.34, l: 0.65 }
+                    ];
+                    notes.forEach(n => {
+                        const o1 = this.ctx.createOscillator();
+                        const o2 = this.ctx.createOscillator();
+                        const g = this.ctx.createGain();
+                        o1.type = 'sine';
+                        o2.type = 'triangle';
+                        o1.frequency.setValueAtTime(n.f, t + n.d);
+                        o2.frequency.setValueAtTime(n.f, t + n.d);
+                        g.gain.setValueAtTime(0.001, t + n.d);
+                        g.gain.linearRampToValueAtTime(0.22, t + n.d + 0.025);
+                        g.gain.exponentialRampToValueAtTime(0.001, t + n.d + n.l);
+                        o1.connect(g);
+                        o2.connect(g);
+                        g.connect(this.ctx.destination);
+                        o1.start(t + n.d);
+                        o2.start(t + n.d);
+                        o1.stop(t + n.d + n.l + 0.04);
+                        o2.stop(t + n.d + n.l + 0.04);
+                    });
+                } catch (e) {}
+            }
+        }
+
+        const soundFX = new SoundFX();
+
+        /**
+         * HỆ THỐNG PHÁO GIẤY HÌNH CHỮ NHẬT RƠI KHẮP MÀN HÌNH (GIỐNG HỆT ẢNH MẪU)
+         * Gồm 2 lớp: lớp dưới hộp thoại và một số mảnh bay phía trước hộp thoại
+         */
+        class RectangularConfettiSystem {
+            constructor(backCanvas, frontCanvas) {
+                this.backCanvas = backCanvas;
+                this.frontCanvas = frontCanvas;
+                this.backCtx = backCanvas.getContext('2d');
+                this.frontCtx = frontCanvas.getContext('2d');
+                this.particles = [];
+                this.active = false;
+                // Bảng màu pháo giấy chữ nhật y hệt ảnh chụp màn hình (đỏ, vàng, xanh lá, xanh dương, hồng, trắng, cam)
+                this.colors = [
+                    '#ff2a4b', // Đỏ tươi
+                    '#ffea00', // Vàng tươi
+                    '#76ff03', // Xanh lá sáng
+                    '#448aff', // Xanh dương
+                    '#ff80ab', // Hồng phấn
+                    '#ffffff', // Trắng tinh
+                    '#ff9100', // Cam tươi
+                    '#e040fb'  // Tím hồng
+                ];
+            }
+
+            resize(w, h, dpr) {
+                this.backCanvas.width = w * dpr;
+                this.backCanvas.height = h * dpr;
+                this.backCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+                this.frontCanvas.width = w * dpr;
+                this.frontCanvas.height = h * dpr;
+                this.frontCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            }
+
+            start() {
+                const w = window.innerWidth;
+                const h = window.innerHeight;
+                this.particles = [];
+                this.active = true;
+
+                // Tạo 85 mảnh pháo giấy chữ nhật rải đều toàn màn hình (70 mảnh lớp sau, 15 mảnh lớp trước hộp thoại)
+                const total = 85;
+                for (let i = 0; i < total; i++) {
+                    this.particles.push({
+                        x: Math.random() * w,
+                        y: Math.random() * h - h * 0.25,
+                        w: 6 + Math.random() * 6,
+                        h: 10 + Math.random() * 9,
+                        color: this.colors[Math.floor(Math.random() * this.colors.length)],
+                        vy: 38 + Math.random() * 55,
+                        vx: (Math.random() - 0.5) * 32,
+                        angle: Math.random() * Math.PI * 2,
+                        vAngle: (Math.random() - 0.5) * 3.2,
+                        flipPhase: Math.random() * Math.PI * 2,
+                        flipSpeed: 2.5 + Math.random() * 3.5,
+                        isFront: i < 14 // ~16% mảnh bay phía trước hộp thoại trắng giống ảnh mẫu
+                    });
+                }
+            }
+
+            stop() {
+                this.active = false;
+                this.particles = [];
+                const w = window.innerWidth;
+                const h = window.innerHeight;
+                this.backCtx.clearRect(0, 0, w, h);
+                this.frontCtx.clearRect(0, 0, w, h);
+            }
+
+            updateAndDraw(dt) {
+                const w = window.innerWidth;
+                const h = window.innerHeight;
+                this.backCtx.clearRect(0, 0, w, h);
+                this.frontCtx.clearRect(0, 0, w, h);
+
+                if (!this.active || this.particles.length === 0) return;
+
+                for (let i = 0; i < this.particles.length; i++) {
+                    const p = this.particles[i];
+                    p.y += p.vy * dt;
+                    p.x += (p.vx + Math.sin(p.flipPhase) * 14) * dt;
+                    p.angle += p.vAngle * dt;
+                    p.flipPhase += p.flipSpeed * dt;
+
+                    // Tái tuần hoàn nhẹ nhàng khi rơi xuống đáy màn hình trong lúc hộp thoại đang mở
+                    if (p.y > h + 25) {
+                        p.y = -20;
+                        p.x = Math.random() * w;
+                    }
+                    if (p.x < -20) p.x = w + 20;
+                    if (p.x > w + 20) p.x = -20;
+
+                    const ctx = p.isFront ? this.frontCtx : this.backCtx;
+                    const scaleY = Math.max(0.28, Math.abs(Math.cos(p.flipPhase)));
+
+                    ctx.save();
+                    ctx.translate(p.x, p.y);
+                    ctx.rotate(p.angle);
+                    ctx.scale(1, scaleY);
+                    ctx.fillStyle = p.color;
+                    ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+                    ctx.restore();
+                }
+            }
+        }
+
+        /**
+         * BẢNG MÀU NỀN & VÒNG QUAY CHUẨN THEO ẢNH MẪU
+         */
+        // 14 tia màu nền Sunburst theo chiều kim đồng hồ từ 12 giờ
+        const SUNBURST_COLORS = [
+            '#061426', // 1. Xanh đen tối (12h -> 1h)
+            '#3b0a08', // 2. Nâu đỏ sẫm (1h -> 2h30)
+            '#8f1106', // 3. Đỏ đậm (2h30 -> 3h)
+            '#d92b04', // 4. Đỏ cam đậm (3h -> 4h)
+            '#f25c05', // 5. Cam tươi (4h -> 5h)
+            '#f7881f', // 6. Cam vàng (5h -> 6h)
+            '#f9b949', // 7. Vàng ấm (6h -> 6h30)
+            '#f3dda4', // 8. Vàng kem (6h30 -> 7h30)
+            '#bde3cf', // 9. Xanh bạc hà nhạt (7h30 -> 8h30)
+            '#89d4e3', // 10. Xanh ngọc sáng (8h30 -> 9h30)
+            '#53bce0', // 11. Xanh da trời sáng (9h30 -> 10h30)
+            '#2c9cd4', // 12. Xanh da trời vừa (10h30 -> 11h)
+            '#1b7bc2', // 13. Xanh dương (11h -> 11h30)
+            '#10559a'  // 14. Xanh dương đậm (11h30 -> 12h)
+        ];
+
+        // 4 màu lặp tuần hoàn trên các nan quạt vòng quay: xanh dương, xanh lá, vàng tươi, đỏ cam
+        const SLICE_COLORS = [
+            '#1e88e5', // Xanh dương
+            '#43a047', // Xanh lá
+            '#fdd835', // Vàng tươi
+            '#e53935'  // Đỏ cam
+        ];
+
+        /**
+         * TRẠNG THÁI ỨNG DỤNG & LƯU TRỮ LOCALSTORAGE
+         */
+        const STORAGE_KEY = 'vqmm_vn_admin_v2';
+
+        const config = {
+            startNum: 10,
+            endNum: 99,
+            durationSec: 6,
+            mode: 'random',          // 'random' | 'preset'
+            nextWinner: '',          // Số trúng tiếp theo
+            winnerQueue: [],         // Hàng đợi nhiều số trúng
+            loopQueue: false,        // Lặp lại hàng đợi
+            queueCursor: 0,          // Vị trí hiện tại nếu lặp lại
+            excludeWon: false,       // Tự động xóa số đã trúng
+            excludedNumbers: [],     // Danh sách số đã bị xóa
+            soundEnabled: true,
+            confettiEnabled: true,
+            history: []              // [{ number, time, rigged }]
+        };
+
+        const runtime = {
+            slices: [],              // Danh sách số đang hiển thị trên vòng quay
+            rotation: 0,             // Góc xoay hiện tại (radian)
+            isSpinning: false,
+            spinStartTime: 0,
+            spinDurationMs: 6000,
+            startRotation: 0,
+            targetRotation: 0,
+            lastTickIndex: -1,
+            lastWinnerNumber: null,
+            currentRigged: false,
+            cx: 0,
+            cy: 0,
+            wheelRadius: 200,
+            hubRadius: 42,
+            constellationNodes: []
+        };
+
+        function loadConfig() {
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    Object.assign(config, parsed);
+                }
+            } catch (e) {}
+            rebuildSlices();
+        }
+
+        function saveConfig() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+            } catch (e) {}
+        }
+
+        function rebuildSlices() {
+            const start = Math.min(config.startNum, config.endNum);
+            const end = Math.max(config.startNum, config.endNum);
+            const excludedSet = new Set(config.excludedNumbers.map(Number));
+            const arr = [];
+            for (let n = start; n <= end; n++) {
+                if (!excludedSet.has(n)) {
+                    arr.push(n);
+                }
+            }
+            if (arr.length === 0) {
+                arr.push(start);
+            }
+            runtime.slices = arr;
+        }
+
+        /**
+         * KHỞI TẠO & VẼ NỀN SUNBURST + MẠNG LƯỚI CHÒM SAO
+         */
+        const bgCanvas = document.getElementById('bgCanvas');
+        const bgCtx = bgCanvas.getContext('2d');
+        const wheelCanvas = document.getElementById('wheelCanvas');
+        const wCtx = wheelCanvas.getContext('2d');
+
+        const confettiSystem = new RectangularConfettiSystem(
+            document.getElementById('confettiBackCanvas'),
+            document.getElementById('confettiFrontCanvas')
+        );
+
+        function initConstellation(width, height) {
+            const nodeCount = Math.min(75, Math.max(40, Math.floor((width * height) / 22000)));
+            const nodes = [];
+            for (let i = 0; i < nodeCount; i++) {
+                nodes.push({
+                    x: Math.random() * width,
+                    y: Math.random() * height,
+                    vx: (Math.random() - 0.5) * 0.28,
+                    vy: (Math.random() - 0.5) * 0.28,
+                    r: Math.random() * 1.6 + 1.1
+                });
+            }
+            runtime.constellationNodes = nodes;
+        }
+
+        function resizeAll() {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            const dpr = window.devicePixelRatio || 1;
+
+            bgCanvas.width = w * dpr;
+            bgCanvas.height = h * dpr;
+            bgCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+            wheelCanvas.width = w * dpr;
+            wheelCanvas.height = h * dpr;
+            wCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+            confettiSystem.resize(w, h, dpr);
+
+            runtime.cx = w * 0.5;
+            runtime.cy = h * 0.465;
+            const minDim = Math.min(w, h);
+            runtime.wheelRadius = Math.max(115, Math.min(minDim * 0.345, 340));
+            runtime.hubRadius = Math.max(26, runtime.wheelRadius * 0.215);
+
+            if (runtime.constellationNodes.length === 0) {
+                initConstellation(w, h);
+            }
+            drawWheel();
+        }
+
+        function drawBackground(dt) {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            const cx = runtime.cx;
+            const cy = runtime.cy;
+            const maxDist = Math.hypot(w, h) * 1.2;
+
+            bgCtx.clearRect(0, 0, w, h);
+
+            // 1. Vẽ 14 tia rẽ quạt Sunburst từ đúng tâm vòng quay
+            const rayCount = SUNBURST_COLORS.length;
+            const rayArc = (2 * Math.PI) / rayCount;
+            const startOffset = -Math.PI / 2;
+
+            for (let i = 0; i < rayCount; i++) {
+                const a1 = startOffset + i * rayArc;
+                const a2 = a1 + rayArc + 0.002;
+                bgCtx.beginPath();
+                bgCtx.moveTo(cx, cy);
+                bgCtx.arc(cx, cy, maxDist, a1, a2);
+                bgCtx.closePath();
+                bgCtx.fillStyle = SUNBURST_COLORS[i];
+                bgCtx.fill();
+            }
+
+            // 2. Cập nhật & vẽ mạng lưới chòm sao chuyển động nhẹ
+            const nodes = runtime.constellationNodes;
+            const linkDist = Math.min(185, Math.max(115, w * 0.12));
+
+            for (let i = 0; i < nodes.length; i++) {
+                const n = nodes[i];
+                n.x += n.vx * (dt * 60);
+                n.y += n.vy * (dt * 60);
+                if (n.x < -20) n.x = w + 20;
+                if (n.x > w + 20) n.x = -20;
+                if (n.y < -20) n.y = h + 20;
+                if (n.y > h + 20) n.y = -20;
+            }
+
+            bgCtx.lineWidth = 0.85;
+            for (let i = 0; i < nodes.length; i++) {
+                for (let j = i + 1; j < nodes.length; j++) {
+                    const dx = nodes[i].x - nodes[j].x;
+                    const dy = nodes[i].y - nodes[j].y;
+                    const dist = Math.hypot(dx, dy);
+                    if (dist < linkDist) {
+                        const alpha = (1 - dist / linkDist) * 0.28;
+                        bgCtx.strokeStyle = `rgba(255, 255, 255, ${alpha.toFixed(3)})`;
+                        bgCtx.beginPath();
+                        bgCtx.moveTo(nodes[i].x, nodes[i].y);
+                        bgCtx.lineTo(nodes[j].x, nodes[j].y);
+                        bgCtx.stroke();
+                    }
+                }
+            }
+
+            bgCtx.fillStyle = 'rgba(255, 255, 255, 0.42)';
+            for (let i = 0; i < nodes.length; i++) {
+                bgCtx.beginPath();
+                bgCtx.arc(nodes[i].x, nodes[i].y, nodes[i].r, 0, Math.PI * 2);
+                bgCtx.fill();
+            }
+        }
+
+        /**
+         * VẼ VÒNG QUAY, CHÂN ĐẾ CHỮ T (#e64a19), ĐÈN LED VIỀN, CÁC Ô SỐ & NÚT QUAY
+         */
+        function drawWheel() {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            const cx = runtime.cx;
+            const cy = runtime.cy;
+            const R = runtime.wheelRadius;
+            const hubR = runtime.hubRadius;
+
+            wCtx.clearRect(0, 0, w, h);
+
+            // 1. VẼ CHÂN ĐẾ CHỮ T MÀU CAM ĐỎ (#e64a19) BÊN DƯỚI VÒNG QUAY
+            const standColor = '#e64a19';
+            const stemWidth = Math.max(9, R * 0.048);
+            const stemTop = cy + R * 0.85;
+            const stemBottom = cy + R * 1.24;
+            const baseWidth = R * 1.02;
+            const baseHeight = Math.max(10, R * 0.052);
+
+            wCtx.save();
+            wCtx.fillStyle = standColor;
+            roundRectPath(wCtx, cx - stemWidth / 2, stemTop, stemWidth, stemBottom - stemTop, stemWidth / 2);
+            wCtx.fill();
+            roundRectPath(wCtx, cx - baseWidth / 2, stemBottom - baseHeight * 0.4, baseWidth, baseHeight, baseHeight / 2);
+            wCtx.fill();
+            wCtx.restore();
+
+            // 2. VẼ VÀNH NGOÀI MÀU CAM ĐỎ (#e64a19)
+            const rimThickness = Math.max(10, R * 0.058);
+            const innerR = R - rimThickness;
+
+            wCtx.save();
+            wCtx.beginPath();
+            wCtx.arc(cx, cy, R, 0, Math.PI * 2);
+            wCtx.fillStyle = standColor;
+            wCtx.shadowColor = 'rgba(0, 0, 0, 0.28)';
+            wCtx.shadowBlur = 18;
+            wCtx.shadowOffsetY = 6;
+            wCtx.fill();
+            wCtx.restore();
+
+            // 3. VẼ CÁC Ô SỐ (10 -> 99) THEO CHIỀU KIM ĐỒNG HỒ
+            const slices = runtime.slices;
+            const count = slices.length;
+            const arc = (2 * Math.PI) / count;
+            const baseStartAngle = -Math.PI / 2;
+
+            for (let i = 0; i < count; i++) {
+                const aStart = baseStartAngle + runtime.rotation + i * arc;
+                const aEnd = aStart + arc;
+
+                let colorIdx = i % SLICE_COLORS.length;
+                if (i === count - 1 && count > 1 && colorIdx === 0) {
+                    colorIdx = 1;
+                }
+
+                wCtx.beginPath();
+                wCtx.moveTo(cx, cy);
+                wCtx.arc(cx, cy, innerR, aStart, aEnd + 0.0015);
+                wCtx.closePath();
+                wCtx.fillStyle = SLICE_COLORS[colorIdx];
+                wCtx.fill();
+
+                wCtx.lineWidth = 0.6;
+                wCtx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+                wCtx.stroke();
+
+                // Số in rõ nét hướng tâm gần viền ngoài
+                wCtx.save();
+                wCtx.translate(cx, cy);
+                wCtx.rotate(aStart + arc / 2);
+
+                const fontSize = Math.max(8, Math.min(15, (innerR * 2 * Math.PI / count) * 0.64));
+                wCtx.font = `700 ${fontSize.toFixed(1)}px Inter, sans-serif`;
+                wCtx.fillStyle = '#ffffff';
+                wCtx.textAlign = 'right';
+                wCtx.textBaseline = 'middle';
+                wCtx.shadowColor = 'rgba(0, 0, 0, 0.35)';
+                wCtx.shadowBlur = 2;
+
+                wCtx.fillText(String(slices[i]), innerR - Math.max(5, R * 0.025), 0);
+                wCtx.restore();
+            }
+
+            // 4. VẼ CHẤM ĐÈN LED TRÒN MÀU VÀNG SÁNG BAO QUANH VIỀN NGOÀI
+            const bulbCount = Math.max(36, Math.min(90, count));
+            const bulbArc = (2 * Math.PI) / bulbCount;
+            const bulbRingR = R - rimThickness * 0.5;
+            const bulbRadius = Math.max(2.1, rimThickness * 0.27);
+
+            wCtx.save();
+            for (let i = 0; i < bulbCount; i++) {
+                const bAngle = baseStartAngle + runtime.rotation + (i + 0.5) * bulbArc;
+                const bx = cx + Math.cos(bAngle) * bulbRingR;
+                const by = cy + Math.sin(bAngle) * bulbRingR;
+
+                wCtx.beginPath();
+                wCtx.arc(bx, by, bulbRadius, 0, Math.PI * 2);
+                wCtx.fillStyle = '#ffe066';
+                wCtx.shadowColor = '#fff3bf';
+                wCtx.shadowBlur = 5;
+                wCtx.fill();
+            }
+            wCtx.restore();
+
+            // 5. VẼ KIM CHỈ TAM GIÁC MÀU TRẮNG Ở ĐỈNH 12 GIỜ
+            const whiteRingR = hubR + Math.max(4, R * 0.02);
+            const triHeight = Math.max(11, R * 0.058);
+            const triHalfBase = Math.max(8, R * 0.044);
+
+            wCtx.save();
+            wCtx.beginPath();
+            wCtx.moveTo(cx, cy - whiteRingR - triHeight);
+            wCtx.lineTo(cx - triHalfBase, cy - whiteRingR + 3);
+            wCtx.lineTo(cx + triHalfBase, cy - whiteRingR + 3);
+            wCtx.closePath();
+            wCtx.fillStyle = '#ffffff';
+            wCtx.shadowColor = 'rgba(0, 0, 0, 0.25)';
+            wCtx.shadowBlur = 4;
+            wCtx.fill();
+            wCtx.restore();
+
+            // 6. VẼ TÂM VÒNG QUAY HÌNH TRÒN ĐỎ (#d32f2f) VIỀN TRẮNG & CHỮ "Quay"
+            wCtx.save();
+            wCtx.beginPath();
+            wCtx.arc(cx, cy, whiteRingR, 0, Math.PI * 2);
+            wCtx.fillStyle = '#ffffff';
+            wCtx.shadowColor = 'rgba(0, 0, 0, 0.28)';
+            wCtx.shadowBlur = 10;
+            wCtx.fill();
+
+            wCtx.beginPath();
+            wCtx.arc(cx, cy, hubR, 0, Math.PI * 2);
+            wCtx.fillStyle = '#d32f2f';
+            wCtx.fill();
+
+            const btnFontSize = Math.max(14, Math.round(hubR * 0.44));
+            wCtx.font = `600 ${btnFontSize}px Inter, sans-serif`;
+            wCtx.fillStyle = '#ffffff';
+            wCtx.textAlign = 'center';
+            wCtx.textBaseline = 'middle';
+            wCtx.fillText('Quay', cx, cy + 1);
+            wCtx.restore();
+        }
+
+        function roundRectPath(ctx, x, y, w, h, r) {
+            const radius = Math.min(r, w / 2, h / 2);
+            ctx.beginPath();
+            ctx.moveTo(x + radius, y);
+            ctx.arcTo(x + w, y, x + w, y + h, radius);
+            ctx.arcTo(x + w, y + h, x, y + h, radius);
+            ctx.arcTo(x, y + h, x, y, radius);
+            ctx.arcTo(x, y, x + w, y, radius);
+            ctx.closePath();
+        }
+
+        /**
+         * TÍNH TOÁN CHỈ SỐ Ô ĐANG NẰM DƯỚI KIM 12 GIỜ
+         */
+        function getSliceIndexAtTopPointer(rotRad) {
+            const count = runtime.slices.length;
+            if (count === 0) return -1;
+            const arc = (2 * Math.PI) / count;
+            const norm = ((rotRad % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+            const pointerPos = (2 * Math.PI - norm) % (2 * Math.PI);
+            return Math.floor(pointerPos / arc) % count;
+        }
+
+        /**
+         * LẤY SỐ TRÚNG TIẾP THEO TỪ CẤU HÌNH ADMIN (NẾU CHỌN CHỈ ĐỊNH SỐ TRÚNG)
+         */
+        function resolveTargetSliceIndex() {
+            const count = runtime.slices.length;
+            if (count === 0) return { index: -1, rigged: false };
+
+            if (config.mode === 'preset') {
+                // Ưu tiên 1: Số trúng kế tiếp
+                if (config.nextWinner !== '' && config.nextWinner !== null && !isNaN(Number(config.nextWinner))) {
+                    const desiredNum = Number(config.nextWinner);
+                    const foundIdx = runtime.slices.indexOf(desiredNum);
+                    if (foundIdx !== -1) {
+                        config.nextWinner = '';
+                        saveConfig();
+                        return { index: foundIdx, rigged: true };
+                    }
+                }
+
+                // Ưu tiên 2: Hàng đợi nhiều lượt quay
+                if (Array.isArray(config.winnerQueue) && config.winnerQueue.length > 0) {
+                    if (config.loopQueue) {
+                        const desiredNum = Number(config.winnerQueue[config.queueCursor % config.winnerQueue.length]);
+                        config.queueCursor = (config.queueCursor + 1) % config.winnerQueue.length;
+                        saveConfig();
+                        const foundIdx = runtime.slices.indexOf(desiredNum);
+                        if (foundIdx !== -1) return { index: foundIdx, rigged: true };
+                    } else {
+                        while (config.winnerQueue.length > 0) {
+                            const desiredNum = Number(config.winnerQueue.shift());
+                            saveConfig();
+                            const foundIdx = runtime.slices.indexOf(desiredNum);
+                            if (foundIdx !== -1) return { index: foundIdx, rigged: true };
+                        }
+                    }
+                }
+            }
+
+            return {
+                index: Math.floor(Math.random() * count),
+                rigged: false
+            };
+        }
+
+        /**
+         * BẮT ĐẦU QUAY VÒNG QUAY
+         */
+        function triggerSpin() {
+            if (runtime.isSpinning) return;
+            if (runtime.slices.length === 0) return;
+
+            if (config.soundEnabled) soundFX.unlock();
+
+            const count = runtime.slices.length;
+            const arc = (2 * Math.PI) / count;
+            const { index: targetIdx, rigged } = resolveTargetSliceIndex();
+            if (targetIdx < 0) return;
+
+            runtime.isSpinning = true;
+            runtime.spinStartTime = performance.now();
+            runtime.spinDurationMs = Math.max(2, config.durationSec) * 1000;
+            runtime.startRotation = runtime.rotation;
+            runtime.currentRigged = rigged;
+
+            // Độ lệch siêu nhỏ bên trong 30% bề rộng ô để dừng tự nhiên dưới kim 12 giờ
+            const naturalJitter = (Math.random() - 0.5) * (arc * 0.30);
+            const desiredMod = (((2 * Math.PI - (targetIdx + 0.5) * arc + naturalJitter) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+
+            const currentMod = ((runtime.startRotation % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+            let deltaAngle = desiredMod - currentMod;
+            if (deltaAngle <= 0) deltaAngle += 2 * Math.PI;
+
+            const fullSpins = Math.max(5, Math.round(config.durationSec * 1.15));
+            runtime.targetRotation = runtime.startRotation + fullSpins * 2 * Math.PI + deltaAngle;
+            runtime.lastTickIndex = getSliceIndexAtTopPointer(runtime.rotation);
+        }
+
+        function easeOutQuint(t) {
+            return 1 - Math.pow(1 - t, 5);
+        }
+
+        /**
+         * VÒNG LẶP ANIMATION 60FPS
+         */
+        let lastTime = performance.now();
+        function mainLoop(now) {
+            const dt = Math.min(0.05, (now - lastTime) / 1000);
+            lastTime = now;
+
+            drawBackground(dt);
+
+            if (runtime.isSpinning) {
+                const elapsed = now - runtime.spinStartTime;
+                const progress = Math.min(1, elapsed / runtime.spinDurationMs);
+                const eased = easeOutQuint(progress);
+
+                runtime.rotation = runtime.startRotation + (runtime.targetRotation - runtime.startRotation) * eased;
+
+                const sliceIdx = getSliceIndexAtTopPointer(runtime.rotation);
+                if (sliceIdx !== runtime.lastTickIndex && sliceIdx !== -1) {
+                    runtime.lastTickIndex = sliceIdx;
+                    if (config.soundEnabled) soundFX.playTick();
+                }
+
+                drawWheel();
+
+                if (progress >= 1) {
+                    runtime.isSpinning = false;
+                    runtime.rotation = runtime.targetRotation % (2 * Math.PI);
+                    drawWheel();
+                    onSpinComplete();
+                }
+            }
+
+            // Cập nhật pháo giấy chữ nhật khi đang mở hộp thoại trúng số
+            confettiSystem.updateAndDraw(dt);
+
+            requestAnimationFrame(mainLoop);
+        }
+
+        /**
+         * XỬ LÝ KHI VÒNG QUAY DỪNG LẠI
+         */
+        function onSpinComplete() {
+            const winIdx = getSliceIndexAtTopPointer(runtime.rotation);
+            if (winIdx < 0 || winIdx >= runtime.slices.length) return;
+
+            const winningNumber = runtime.slices[winIdx];
+            runtime.lastWinnerNumber = winningNumber;
+
+            const timeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            config.history.unshift({
+                number: winningNumber,
+                time: timeStr,
+                rigged: !!runtime.currentRigged
+            });
+
+            if (config.excludeWon) {
+                if (!config.excludedNumbers.includes(winningNumber)) {
+                    config.excludedNumbers.push(winningNumber);
+                }
+                rebuildSlices();
+                drawWheel();
+            }
+
+            saveConfig();
+            syncAdminUI();
+
+            if (config.soundEnabled) {
+                soundFX.playWin();
+            }
+
+            // Hiển thị lớp phủ tối bán trong suốt & hộp thoại trúng số giống hệt ảnh mẫu
+            document.getElementById('winnerNumberText').textContent = winningNumber;
+            document.getElementById('winnerBackdrop').classList.remove('hidden');
+
+            const modal = document.getElementById('winnerModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+
+            if (config.confettiEnabled) {
+                confettiSystem.start();
+            }
+        }
+
+        function closeWinnerModal() {
+            document.getElementById('winnerBackdrop').classList.add('hidden');
+            const modal = document.getElementById('winnerModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            confettiSystem.stop();
+        }
+
+        /**
+         * SỰ KIỆN TRÊN HỘP THOẠI TRÚNG SỐ ("Xóa ô này", "Đóng lại", nút "×", phím Enter / Escape)
+         */
+        document.getElementById('btnCloseWinner').addEventListener('click', closeWinnerModal);
+        document.getElementById('btnCloseWinnerX').addEventListener('click', closeWinnerModal);
+
+        document.getElementById('btnDeleteSlice').addEventListener('click', () => {
+            if (runtime.lastWinnerNumber !== null && !config.excludedNumbers.includes(runtime.lastWinnerNumber)) {
+                config.excludedNumbers.push(runtime.lastWinnerNumber);
+                saveConfig();
+                rebuildSlices();
+                drawWheel();
+                syncAdminUI();
+            }
+            closeWinnerModal();
+        });
+
+        /**
+         * TƯƠNG TÁC QUAY TRÊN CANVAS & BÀN PHÍM
+         */
+        wheelCanvas.addEventListener('click', (e) => {
+            if (runtime.isSpinning) return;
+            const rect = wheelCanvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            const dist = Math.hypot(x - runtime.cx, y - runtime.cy);
+            if (dist <= runtime.wheelRadius) {
+                triggerSpin();
+            }
+        });
+
+        wheelCanvas.addEventListener('mousemove', (e) => {
+            const rect = wheelCanvas.getBoundingClientRect();
+            const dist = Math.hypot((e.clientX - rect.left) - runtime.cx, (e.clientY - rect.top) - runtime.cy);
+            wheelCanvas.style.cursor = dist <= runtime.wheelRadius ? 'pointer' : 'default';
+        });
+
+        document.addEventListener('keydown', (e) => {
+            const adminOpen = !document.getElementById('adminModal').classList.contains('hidden');
+            const winnerOpen = !document.getElementById('winnerModal').classList.contains('hidden');
+
+            if (winnerOpen) {
+                if (e.key === 'Escape' || e.key === 'Enter') {
+                    e.preventDefault();
+                    closeWinnerModal();
+                }
+                return;
+            }
+
+            if (adminOpen) {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    applyAdminInputsToConfig();
+                    closeAdminModal();
+                }
+                return;
+            }
+
+            if (e.code === 'Space' || e.key === 'Enter') {
+                e.preventDefault();
+                triggerSpin();
+            }
+        });
+
+        /**
+         * CƠ CHẾ MỞ BẢNG ADMIN ẨN (TRIPLE CLICK (i) HOẶC PHÍM TẮT BÍ MẬT)
+         */
+        let infoClickCount = 0;
+        let infoClickTimer = null;
+        document.getElementById('secretInfoTrigger').addEventListener('click', () => {
+            infoClickCount++;
+            clearTimeout(infoClickTimer);
+            if (infoClickCount >= 3) {
+                infoClickCount = 0;
+                openAdminModal();
+            } else {
+                infoClickTimer = setTimeout(() => { infoClickCount = 0; }, 750);
+            }
+        });
+
+        let secretKeyCount = 0;
+        let lastSecretKey = '';
+        let secretKeyTimer = null;
+
+        document.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'a') || (e.altKey && e.key.toLowerCase() === 'a')) {
+                e.preventDefault();
+                openAdminModal();
+                return;
+            }
+
+            if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+
+            const k = e.key.toLowerCase();
+            if (k === '9' || k === 'h') {
+                if (k === lastSecretKey) {
+                    secretKeyCount++;
+                } else {
+                    lastSecretKey = k;
+                    secretKeyCount = 1;
+                }
+                clearTimeout(secretKeyTimer);
+                if (secretKeyCount >= 3) {
+                    secretKeyCount = 0;
+                    openAdminModal();
+                } else {
+                    secretKeyTimer = setTimeout(() => { secretKeyCount = 0; }, 800);
+                }
+            }
+        });
+
+        /**
+         * ĐỒNG BỘ DỮ LIỆU & SỰ KIỆN TRONG ADMIN PANEL
+         */
+        function openAdminModal() {
+            syncAdminUI();
+            const modal = document.getElementById('adminModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeAdminModal() {
+            const modal = document.getElementById('adminModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function syncAdminUI() {
+            const isPreset = config.mode === 'preset';
+            const modeRandomBtn = document.getElementById('modeRandomBtn');
+            const modePresetBtn = document.getElementById('modePresetBtn');
+            const badge = document.getElementById('adminStatusBadge');
+
+            if (isPreset) {
+                modePresetBtn.className = 'px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500 text-slate-950 shadow-xs';
+                modeRandomBtn.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white';
+                badge.textContent = 'Chế độ: Chỉ định số trúng';
+                badge.className = 'px-2 py-0.5 text-[11px] font-semibold rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40';
+            } else {
+                modeRandomBtn.className = 'px-3 py-1.5 rounded-lg text-xs font-bold bg-sky-500 text-slate-950 shadow-xs';
+                modePresetBtn.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white';
+                badge.textContent = 'Chế độ: Ngẫu nhiên hoàn toàn';
+                badge.className = 'px-2 py-0.5 text-[11px] font-semibold rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/40';
+            }
+
+            document.getElementById('inputNextWinner').value = config.nextWinner;
+            document.getElementById('inputWinnerQueue').value = config.winnerQueue.join(', ');
+            document.getElementById('chkLoopQueue').checked = config.loopQueue;
+            document.getElementById('queueCountLabel').textContent = `${config.winnerQueue.length} số trong hàng đợi`;
+
+            document.getElementById('inputStartNum').value = config.startNum;
+            document.getElementById('inputEndNum').value = config.endNum;
+            document.getElementById('rangeDuration').value = config.durationSec;
+            document.getElementById('lblDuration').textContent = `${config.durationSec} giây`;
+
+            document.getElementById('chkExcludeWon').checked = config.excludeWon;
+            document.getElementById('chkSound').checked = config.soundEnabled;
+            document.getElementById('chkConfetti').checked = config.confettiEnabled;
+
+            document.getElementById('historyCount').textContent = config.history.length;
+            document.getElementById('excludedCount').textContent = config.excludedNumbers.length;
+
+            const histBox = document.getElementById('adminHistoryList');
+            if (config.history.length === 0) {
+                histBox.innerHTML = '<span class="text-xs text-slate-500 italic">Chưa có lượt quay nào...</span>';
+            } else {
+                histBox.innerHTML = config.history.map((item, idx) => `
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold ${
+                        item.rigged
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                            : 'bg-slate-800 text-slate-200 border border-slate-700'
+                    }">
+                        <span>#${config.history.length - idx}: ${item.number}</span>
+                        <span class="text-[10px] font-normal opacity-65">${item.time}</span>
+                    </span>
+                `).join('');
+            }
+        }
+
+        function applyAdminInputsToConfig() {
+            const nextVal = document.getElementById('inputNextWinner').value.trim();
+            config.nextWinner = nextVal === '' ? '' : Number(nextVal);
+
+            const queueRaw = document.getElementById('inputWinnerQueue').value;
+            config.winnerQueue = queueRaw
+                .split(/[\s,;]+/)
+                .map(s => s.trim())
+                .filter(s => s !== '' && !isNaN(Number(s)))
+                .map(Number);
+
+            config.loopQueue = document.getElementById('chkLoopQueue').checked;
+
+            const sNum = parseInt(document.getElementById('inputStartNum').value, 10);
+            const eNum = parseInt(document.getElementById('inputEndNum').value, 10);
+            if (!isNaN(sNum) && !isNaN(eNum) && sNum !== eNum) {
+                config.startNum = sNum;
+                config.endNum = eNum;
+            }
+
+            config.durationSec = parseInt(document.getElementById('rangeDuration').value, 10) || 6;
+            config.excludeWon = document.getElementById('chkExcludeWon').checked;
+            config.soundEnabled = document.getElementById('chkSound').checked;
+            config.confettiEnabled = document.getElementById('chkConfetti').checked;
+
+            saveConfig();
+            rebuildSlices();
+            drawWheel();
+            syncAdminUI();
+        }
+
+        document.getElementById('modeRandomBtn').addEventListener('click', () => {
+            config.mode = 'random';
+            saveConfig();
+            syncAdminUI();
+        });
+
+        document.getElementById('modePresetBtn').addEventListener('click', () => {
+            config.mode = 'preset';
+            saveConfig();
+            syncAdminUI();
+        });
+
+        document.getElementById('btnClearNextWinner').addEventListener('click', () => {
+            document.getElementById('inputNextWinner').value = '';
+            config.nextWinner = '';
+            saveConfig();
+        });
+
+        document.getElementById('rangeDuration').addEventListener('input', (e) => {
+            document.getElementById('lblDuration').textContent = `${e.target.value} giây`;
+        });
+
+        document.getElementById('inputWinnerQueue').addEventListener('input', (e) => {
+            const count = e.target.value.split(/[\s,;]+/).filter(s => s.trim() !== '' && !isNaN(Number(s))).length;
+            document.getElementById('queueCountLabel').textContent = `${count} số trong hàng đợi`;
+        });
+
+        document.getElementById('btnRestoreExcluded').addEventListener('click', () => {
+            config.excludedNumbers = [];
+            saveConfig();
+            rebuildSlices();
+            drawWheel();
+            syncAdminUI();
+        });
+
+        document.getElementById('btnResetAll').addEventListener('click', () => {
+            config.history = [];
+            config.excludedNumbers = [];
+            config.nextWinner = '';
+            config.winnerQueue = [];
+            config.queueCursor = 0;
+            config.mode = 'random';
+            saveConfig();
+            rebuildSlices();
+            drawWheel();
+            syncAdminUI();
+        });
+
+        document.getElementById('btnCloseAdmin').addEventListener('click', () => {
+            applyAdminInputsToConfig();
+            closeAdminModal();
+        });
+
+        document.getElementById('btnSaveAndCloseAdmin').addEventListener('click', () => {
+            applyAdminInputsToConfig();
+            closeAdminModal();
+        });
+
+        document.getElementById('adminModal').addEventListener('click', (e) => {
+            if (e.target.id === 'adminModal') {
+                applyAdminInputsToConfig();
+                closeAdminModal();
+            }
+        });
+
+        /**
+         * KHỞI CHẠY ỨNG DỤNG
+         */
+        window.addEventListener('resize', resizeAll);
+        window.onload = function () {
+            loadConfig();
+            resizeAll();
+            requestAnimationFrame(mainLoop);
+        };
+    </script>
+</body>
+</html>
